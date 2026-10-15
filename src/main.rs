@@ -1,6 +1,7 @@
 //! Disk Inventory NG — a Rust re-imagining of Disk Inventory X.
 
 mod app;
+mod icon;
 mod kinds;
 mod scan;
 mod treemap;
@@ -18,6 +19,12 @@ fn main() -> eframe::Result<()> {
             println!("{} bytes, {} files, {} nodes in {:.2?}", root.size, root.files, tree.nodes.len(), start.elapsed());
             return Ok(());
         }
+        Some("--write-icon") => {
+            let path = std::path::PathBuf::from(args.get(1).expect("--write-icon <path> [size]"));
+            let size = args.get(2).and_then(|s| s.to_str()?.parse().ok()).unwrap_or(1024);
+            icon::write_png(&path, size).expect("could not write icon");
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -25,7 +32,8 @@ fn main() -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Disk Inventory NG")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([800.0, 500.0]),
+            .with_min_inner_size([800.0, 500.0])
+            .with_icon(eframe::egui::IconData { rgba: icon::render(256), width: 256, height: 256 }),
         ..Default::default()
     };
     // A path given on the command line is scanned right away.

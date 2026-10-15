@@ -1,5 +1,7 @@
 # Disk Inventory NG
 
+<img src="docs/icon.png" width="128" align="right" alt="App icon">
+
 A Rust re-imagining of [Disk Inventory X](https://www.derlien.com) — the
 macOS disk usage utility that shows where your disk space has gone using
 cushion treemaps (layout after KDirStat, inspired by WinDirStat).
@@ -7,7 +9,7 @@ cushion treemaps (layout after KDirStat, inspired by WinDirStat).
 ## Features
 
 - **Volume list** on startup (refreshes as volumes mount/unmount), or open any folder
-- Background scan with live progress and cancel; hard links counted once,
+- Fast **parallel scan** across all CPU cores, with live progress and cancel; hard links counted once,
   other volumes (`/Volumes`, `/System/Volumes`) not crossed
 - **Three synchronized views** — selecting in one updates the others:
   - folder hierarchy with sizes and percentage bars
@@ -29,6 +31,27 @@ cargo run --release            # start with the volume list
 cargo run --release -- ~/Downloads   # scan a folder right away
 ```
 
+## Building the macOS app
+
+```sh
+scripts/bundle-macos.sh              # native architecture
+scripts/bundle-macos.sh universal    # arm64 + x86_64 (rustup target add x86_64-apple-darwin)
+```
+
+This produces `target/release/bundle/Disk Inventory NG.app` (ad-hoc signed),
+which you can drag into `/Applications`. The icon — an isometric 3D cushion
+treemap, in homage to the original — is drawn by the app itself
+(`disk-inventory-ng --write-icon icon.png 1024`) and packed with `iconutil`.
+
+To see the full disk, grant the app **Full Disk Access** in System Settings →
+Privacy & Security; otherwise protected folders are skipped.
+
+## Benchmarking
+
+```sh
+cargo run --release -- --scan-only ~/Library
+```
+
 ## Project layout
 
 | File | Purpose |
@@ -38,6 +61,8 @@ cargo run --release -- ~/Downloads   # scan a folder right away
 | `src/kinds.rs` | Colour palette for file kinds |
 | `src/volumes.rs` | Mounted volume discovery |
 | `src/app.rs` | egui user interface |
+| `src/icon.rs` | Procedural isometric treemap app icon |
+| `scripts/bundle-macos.sh` | Builds the `.app` bundle |
 
 ## Credits
 
