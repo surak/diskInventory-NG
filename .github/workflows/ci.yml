@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +26,17 @@ jobs:
       - run: cargo build --release
       - run: cargo test
       - run: cargo clippy -- -D warnings
+
+  # 32-bit Raspberry Pi OS: cross-compile only (no armhf runners).
+  armhf:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-gnueabihf
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target armv7-unknown-linux-gnueabihf

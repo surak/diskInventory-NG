@@ -56,8 +56,13 @@ Download the package for your system from the
 |--------|----------|----------------|
 | **macOS** 11+ (Apple Silicon & Intel) | `DiskInventoryNG-x.y.z.dmg` | Open it and drag **Disk Inventory NG** onto **Applications**. |
 | **Windows** 10/11 (x64) | `DiskInventoryNG-x.y.z-windows-x64.zip` | Unzip anywhere and run **Disk Inventory NG.exe**. |
-| **Linux** (x86_64) | `DiskInventoryNG-x.y.z-x86_64.AppImage` | `chmod +x` it and run it. |
+| **Linux** PC (x86_64) | `DiskInventoryNG-x.y.z-x86_64.AppImage` | `chmod +x` it and run it. |
 | | `DiskInventoryNG-x.y.z-linux-x86_64.tar.gz` | Unpack into `~/.local` or `/usr/local` (binary, desktop entry, icons). |
+| **Raspberry Pi** / ARM64 Linux (64-bit OS) | `DiskInventoryNG-x.y.z-aarch64.AppImage` or `…-linux-aarch64.tar.gz` | As above. |
+| **Raspberry Pi** (32-bit OS) | `DiskInventoryNG-x.y.z-linux-armhf.tar.gz` | As above. |
+
+Linux builds need glibc 2.35+ (Ubuntu 22.04, Debian 12, Raspberry Pi OS
+Bookworm or newer) and OpenGL; on a Raspberry Pi, a Pi 4 or 5 is recommended.
 
 <p align="center"><img src="docs/dmg.png" width="560" alt="The macOS installer disk image"></p>
 

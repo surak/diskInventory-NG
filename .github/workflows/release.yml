@@ -36,21 +36,48 @@ jobs:
 
   linux:
     needs: create
-    runs-on: ubuntu-22.04 # older glibc, so the binary runs on more distributions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Older Ubuntu = older glibc, so the binaries run on more distributions.
+          - name: x86_64
+            runner: ubuntu-22.04
+            appimage: x86_64
+          - name: arm64 (Raspberry Pi 3/4/5, 64-bit OS)
+            runner: ubuntu-22.04-arm
+            appimage: aarch64
+          - name: armhf (Raspberry Pi, 32-bit OS)
+            runner: ubuntu-22.04
+            target: armv7-unknown-linux-gnueabihf
+    name: linux ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - name: Install build dependencies
+        run: |
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libgl1-mesa-dev libfuse2
+          if [ -n "$TARGET" ]; then sudo apt-get install -y gcc-arm-linux-gnueabihf; fi
+      - name: Install appimagetool
+        if: matrix.appimage
+        run: |
           curl -fsSL -o /usr/local/bin/appimagetool \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage }}.AppImage
           chmod +x /usr/local/bin/appimagetool
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
       - run: scripts/package-linux.sh
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" target/release/bundle/*.tar.gz target/release/bundle/*.AppImage --clobber
+        run: gh release upload "$GITHUB_REF_NAME" target/release/bundle/*.tar.gz $(ls target/release/bundle/*.AppImage 2>/dev/null) --clobber
 
   windows:
     needs: create
