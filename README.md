@@ -17,6 +17,11 @@ cushion treemaps (layout after KDirStat, inspired by WinDirStat).
 - **Selection list**: largest files, filtered by kind and searchable
 - Reveal in Finder (⌘R), Open, Move to Trash (tree updates in place)
 
+## Requirements
+
+- macOS (uses `open -R` for Reveal in Finder and the macOS Trash)
+- Rust (stable, 2024 edition)
+
 ## Build & run
 
 ```sh
@@ -24,6 +29,21 @@ cargo run --release            # start with the volume list
 cargo run --release -- ~/Downloads   # scan a folder right away
 ```
 
+## Project layout
+
+| File | Purpose |
+|------|---------|
+| `src/scan.rs` | Recursive scanner, node tree, file kind statistics |
+| `src/treemap.rs` | Squarified layout and cushion shading |
+| `src/kinds.rs` | Colour palette for file kinds |
+| `src/volumes.rs` | Mounted volume discovery |
+| `src/app.rs` | egui user interface |
+
+## Credits
+
+Inspired by Disk Inventory X by Tjark Derlien. This is an independent
+implementation and contains no code from the original.
+
 ## License
 
-GPL-3.0-or-later, like the original.
+MIT — see [LICENSE](LICENSE).
