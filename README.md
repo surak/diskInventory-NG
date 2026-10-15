@@ -6,15 +6,15 @@
 
 <p align="center">
   <b>See where your disk space has gone.</b><br>
-  A fast, native disk usage visualizer for macOS, written in Rust —<br>
+  A fast, native disk usage visualizer for macOS, Windows and Linux, written in Rust —<br>
   a modern tribute to <a href="https://www.derlien.com">Disk Inventory X</a> by Tjark Derlien.
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/badge/download-DMG-blue?logo=apple"></a>
+  <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/surak/diskInventory-NG?label=download"></a>
   <a href="https://surak.github.io/diskInventory-NG/"><img alt="Website" src="https://img.shields.io/badge/website-GitHub%20Pages-8A2BE2"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="macOS 11+" src="https://img.shields.io/badge/macOS-11%2B-lightgrey?logo=apple">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey">
   <img alt="Rust" src="https://img.shields.io/badge/made%20with-Rust-orange?logo=rust">
 </p>
 
@@ -41,33 +41,41 @@ downloads, caches and VM images jump right out.
   coloured like the treemap. Click one to list its files.
 - **Selection list** — the largest files, filterable by kind and searchable by name.
 - **Inspector** — size, share of the total, file count, kind and age of the selection.
-- **Zoom** into any folder (double-click or <kbd>⌘</kbd><kbd>↓</kbd>) and back out (<kbd>⌘</kbd><kbd>↑</kbd>).
-- **Act on it** — Reveal in Finder (<kbd>⌘</kbd><kbd>R</kbd>), Open, or Move to Trash;
+- **Zoom** into any folder (double-click or <kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>↓</kbd>) and back out (<kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>↑</kbd>).
+- **Act on it** — show in Finder / Explorer / your file manager (<kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>R</kbd>), Open, or Move to Trash (Recycle Bin on Windows);
   the view updates instantly without a rescan.
 - **Volume list** on launch that follows disks as they are mounted and unmounted.
 - Counts hard links once and doesn't wander into other volumes.
 
 ## 📦 Install
 
-1. Download the latest **`DiskInventoryNG-x.y.z.dmg`** from
-   [Releases](../../releases/latest).
-2. Open it and drag **Disk Inventory NG** onto **Applications**.
+Download the package for your system from the
+[latest release](../../releases/latest):
 
-<p align="center"><img src="docs/dmg.png" width="560" alt="The installer disk image"></p>
+| System | Download | How to install |
+|--------|----------|----------------|
+| **macOS** 11+ (Apple Silicon & Intel) | `DiskInventoryNG-x.y.z.dmg` | Open it and drag **Disk Inventory NG** onto **Applications**. |
+| **Windows** 10/11 (x64) | `DiskInventoryNG-x.y.z-windows-x64.zip` | Unzip anywhere and run **Disk Inventory NG.exe**. |
+| **Linux** (x86_64) | `DiskInventoryNG-x.y.z-x86_64.AppImage` | `chmod +x` it and run it. |
+| | `DiskInventoryNG-x.y.z-linux-x86_64.tar.gz` | Unpack into `~/.local` or `/usr/local` (binary, desktop entry, icons). |
+
+<p align="center"><img src="docs/dmg.png" width="560" alt="The macOS installer disk image"></p>
 
 > [!NOTE]
-> Release builds are ad-hoc signed, not notarized. On first launch,
-> right-click the app and choose **Open**, or run
-> `xattr -dr com.apple.quarantine "/Applications/Disk Inventory NG.app"`.
+> The builds are not code-signed by Apple or Microsoft. On **macOS**, right-click
+> the app and choose **Open** the first time (or run
+> `xattr -dr com.apple.quarantine "/Applications/Disk Inventory NG.app"`).
+> On **Windows**, SmartScreen may warn: choose *More info → Run anyway*.
 
 > [!TIP]
-> To scan your whole disk, give the app **Full Disk Access** in
-> *System Settings → Privacy & Security*. Without it, macOS hides
-> protected folders (Mail, Safari, …) and they are skipped.
+> On macOS, give the app **Full Disk Access** in *System Settings → Privacy &
+> Security* to scan your whole disk. Without it, macOS hides protected folders
+> (Mail, Safari, …) and they are skipped.
 
 ## 🛠 Build from source
 
-Requires macOS 11+ and a stable [Rust](https://rustup.rs) toolchain.
+Requires a stable [Rust](https://rustup.rs) toolchain. On Debian/Ubuntu also install
+`libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libgl1-mesa-dev`.
 
 ```sh
 git clone https://github.com/surak/diskInventory-NG.git
@@ -76,13 +84,18 @@ cargo run --release                 # start with the volume list
 cargo run --release -- ~/Downloads  # or scan a folder right away
 ```
 
-### App bundle and DMG
+### Packages
 
 ```sh
 scripts/bundle-macos.sh             # → target/release/bundle/Disk Inventory NG.app
 scripts/make-dmg.sh                 # → target/release/bundle/DiskInventoryNG-<version>.dmg
 scripts/make-dmg.sh universal       # arm64 + x86_64 (rustup target add x86_64-apple-darwin)
+scripts/package-linux.sh            # → .tar.gz, plus an .AppImage if appimagetool is installed
+pwsh scripts/package-windows.ps1    # → .zip with the .exe (icon embedded)
 ```
+
+Pushing a tag like `v0.2.0` builds all of these on GitHub Actions and attaches
+them to a release.
 
 `make-dmg.sh` lays out the installer window through Finder, so the first run
 may ask to allow your terminal to control Finder.
@@ -106,10 +119,12 @@ cargo run --release -- --scan-only ~/Library
 | [`src/app.rs`](src/app.rs) | The [egui](https://github.com/emilk/egui) user interface |
 | [`src/icon.rs`](src/icon.rs) | Procedural isometric treemap app icon |
 | [`src/volumes.rs`](src/volumes.rs) | Mounted volume discovery |
+| [`src/platform.rs`](src/platform.rs) | OS specifics: file sizes, file manager, shortcuts |
 | [`src/kinds.rs`](src/kinds.rs) | File kind colour palette |
-| [`scripts/`](scripts) | `.app` bundling and DMG creation |
+| [`scripts/`](scripts) | Packaging: `.app` + DMG, Linux tarball + AppImage, Windows zip |
 
-Sizes are *allocated* sizes on disk (blocks × 512), like Finder's "on disk" figure.
+On macOS and Linux, sizes are *allocated* sizes on disk (blocks × 512), like Finder's
+"on disk" figure; on Windows they are file sizes.
 
 ## 🙏 Acknowledgements
 
@@ -123,7 +138,7 @@ the design this project follows, and the app icon is a homage to its isometric
 **Thank you, Tjark,** for creating Disk Inventory X, for sharing it with the
 world for free and as open source (under the GPL), and for showing how useful a
 picture of your disk can be. This project is our attempt to carry that idea
-forward on modern macOS.
+forward, on modern macOS and now on Windows and Linux too.
 
 Disk Inventory X itself stood on the shoulders of others, and so do we:
 

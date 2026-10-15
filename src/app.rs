@@ -14,6 +14,7 @@ use eframe::egui::{
     TextureHandle, TextureOptions, Vec2,
 };
 
+use crate::platform::{self, CMD, REVEAL_LABEL};
 use crate::scan::{self, Progress, Tree, NO_KIND};
 use crate::treemap::{self, Layout};
 use crate::volumes::{self, Volume};
@@ -159,13 +160,13 @@ impl App {
 
     fn reveal(&self, idx: usize) {
         if let Some(tree) = &self.tree {
-            let _ = std::process::Command::new("open").arg("-R").arg(tree.path(idx)).spawn();
+            platform::reveal(&tree.path(idx));
         }
     }
 
     fn open(&self, idx: usize) {
         if let Some(tree) = &self.tree {
-            let _ = std::process::Command::new("open").arg(tree.path(idx)).spawn();
+            platform::open(&tree.path(idx));
         }
     }
 
@@ -348,14 +349,14 @@ impl App {
                         self.start_scan(t.path(0));
                     }
                 ui.separator();
-                if ui.add_enabled(has_sel, egui::Button::new("🔍 Zoom In")).on_hover_text("⌘↓").clicked() {
+                if ui.add_enabled(has_sel, egui::Button::new("🔍 Zoom In")).on_hover_text(format!("{CMD}↓")).clicked() {
                     self.zoom_in();
                 }
-                if ui.add_enabled(self.zoom != 0, egui::Button::new("Zoom Out")).on_hover_text("⌘↑").clicked() {
+                if ui.add_enabled(self.zoom != 0, egui::Button::new("Zoom Out")).on_hover_text(format!("{CMD}↑")).clicked() {
                     self.zoom_out();
                 }
                 ui.separator();
-                if ui.add_enabled(has_sel, egui::Button::new("Reveal in Finder")).on_hover_text("⌘R").clicked() {
+                if ui.add_enabled(has_sel, egui::Button::new(REVEAL_LABEL)).on_hover_text(format!("{CMD}R")).clicked() {
                     self.reveal(self.selected.unwrap());
                 }
                 if ui.add_enabled(has_sel, egui::Button::new("🗑 Move to Trash")).clicked() {
@@ -556,7 +557,7 @@ impl App {
             ui.end_row();
         });
         ui.horizontal(|ui| {
-            if ui.button("Reveal in Finder").clicked() {
+            if ui.button(REVEAL_LABEL).clicked() {
                 self.reveal(sel);
             }
             if ui.button("Open").clicked() {
@@ -777,7 +778,7 @@ enum MenuAction {
 fn menu_actions(ui: &mut egui::Ui) -> Option<MenuAction> {
     let mut action = None;
     for (label, a) in [
-        ("Reveal in Finder", MenuAction::Reveal),
+        (REVEAL_LABEL, MenuAction::Reveal),
         ("Open", MenuAction::Open),
         ("Zoom In", MenuAction::ZoomIn),
         ("Move to Trash…", MenuAction::Trash),

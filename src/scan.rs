@@ -3,12 +3,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use rayon::prelude::*;
+
+use crate::platform;
 
 /// Kind index used for directories.
 pub const NO_KIND: u32 = u32::MAX;
@@ -110,9 +111,6 @@ pub struct Progress {
     pub cancel: AtomicBool,
 }
 
-/// Directories that are never descended into unless they are the scan root:
-/// other volumes and virtual filesystems.
-const SKIP_DIRS: &[&str] = &["/Volumes", "/System/Volumes", "/dev", "/proc", "/sys"];
 
 /// Result of scanning one directory entry, before it is flattened into the
 /// arena. Built in parallel, one task per directory.
@@ -146,21 +144,18 @@ impl Walker<'_> {
             let name = entry.file_name().to_string_lossy().into_owned();
             if md.is_dir() {
                 let child_path = entry.path();
-                if !SKIP_DIRS.iter().any(|d| child_path == Path::new(d)) {
-                    dirs.push((name, md.mtime(), child_path));
+                if !platform::SKIP_DIRS.iter().any(|d| child_path == Path::new(d)) {
+                    dirs.push((name, platform::mtime(&md), child_path));
                 }
             } else {
                 // Count hard-linked files only once.
-                let size = if md.nlink() > 1
-                    && !self.seen_inodes.lock().unwrap().insert((md.dev(), md.ino()))
-                {
-                    0
-                } else {
-                    md.blocks() * 512
+                let size = match platform::hard_link_id(&md) {
+                    Some(id) if !self.seen_inodes.lock().unwrap().insert(id) => 0,
+                    _ => platform::disk_size(&md),
                 };
                 count += 1;
                 bytes += size;
-                files.push(Entry::File { name, size, mtime: md.mtime() });
+                files.push(Entry::File { name, size, mtime: platform::mtime(&md) });
             }
         }
         self.progress.files.fetch_add(count, Ordering::Relaxed);
@@ -190,7 +185,7 @@ pub fn scan(root: &Path, progress: &Progress) -> Option<Tree> {
     }
 
     let mut s = Scanner { nodes: Vec::new(), kind_map: HashMap::new(), kinds: Vec::new() };
-    let mtime = fs::symlink_metadata(root).map(|m| m.mtime()).unwrap_or(0);
+    let mtime = fs::symlink_metadata(root).map(|m| platform::mtime(&m)).unwrap_or(0);
     s.nodes.push(Node {
         name: root.to_string_lossy().into_owned(),
         parent: None,

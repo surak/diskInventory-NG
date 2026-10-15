@@ -1,8 +1,12 @@
 //! Disk Inventory NG — a Rust re-imagining of Disk Inventory X.
 
+// No console window for release builds on Windows.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod icon;
 mod kinds;
+mod platform;
 mod scan;
 mod treemap;
 mod volumes;
@@ -20,7 +24,11 @@ fn main() -> eframe::Result<()> {
             return Ok(());
         }
         Some("--write-icon") => {
-            let path = std::path::PathBuf::from(args.get(1).expect("--write-icon <path> [size]"));
+            let path = std::path::PathBuf::from(args.get(1).expect("--write-icon <path.png|path.ico> [size]"));
+            if path.extension().is_some_and(|e| e == "ico") {
+                icon::write_ico(&path).expect("could not write icon");
+                return Ok(());
+            }
             let size = args.get(2).and_then(|s| s.to_str()?.parse().ok()).unwrap_or(1024);
             icon::write_png(&path, size).expect("could not write icon");
             return Ok(());

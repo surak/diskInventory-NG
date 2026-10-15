@@ -199,3 +199,32 @@ pub fn write_png(path: &std::path::Path, size: usize) -> std::io::Result<()> {
     enc.write_header()?.write_image_data(&render(size))?;
     Ok(())
 }
+
+fn png_bytes(size: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, size as u32, size as u32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.write_header().and_then(|mut w| w.write_image_data(&render(size))).expect("PNG encoding failed");
+    out
+}
+
+/// Writes a Windows .ico with PNG-compressed images in the usual sizes.
+pub fn write_ico(path: &std::path::Path) -> std::io::Result<()> {
+    let images: Vec<(usize, Vec<u8>)> = [16, 24, 32, 48, 64, 128, 256].iter().map(|&s| (s, png_bytes(s))).collect();
+    let mut ico = Vec::new();
+    ico.extend_from_slice(&[0, 0, 1, 0]);
+    ico.extend_from_slice(&(images.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * images.len();
+    for (size, data) in &images {
+        let dim = if *size >= 256 { 0 } else { *size as u8 }; // 0 means 256
+        ico.extend_from_slice(&[dim, dim, 0, 0, 1, 0, 32, 0]);
+        ico.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        ico.extend_from_slice(&(offset as u32).to_le_bytes());
+        offset += data.len();
+    }
+    for (_, data) in &images {
+        ico.extend_from_slice(data);
+    }
+    std::fs::write(path, ico)
+}
