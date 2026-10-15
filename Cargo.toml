@@ -9,6 +9,8 @@ description = "Disk usage visualizer with cushion treemaps, inspired by Disk Inv
 bytesize = "1"
 eframe = "0.29"
 libc = "0.2.190"
+png = "0.18.1"
+rayon = "1.12.0"
 rfd = "0.15"
 trash = "5"
 

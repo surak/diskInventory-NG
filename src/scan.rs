@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
+use rayon::prelude::*;
+
 /// Kind index used for directories.
 pub const NO_KIND: u32 = u32::MAX;
 
@@ -112,23 +114,82 @@ pub struct Progress {
 /// other volumes and virtual filesystems.
 const SKIP_DIRS: &[&str] = &["/Volumes", "/System/Volumes", "/dev", "/proc", "/sys"];
 
-struct Scanner<'a> {
-    nodes: Vec<Node>,
-    kind_map: HashMap<String, u32>,
-    kinds: Vec<KindStat>,
-    seen_inodes: HashSet<(u64, u64)>,
+/// Result of scanning one directory entry, before it is flattened into the
+/// arena. Built in parallel, one task per directory.
+enum Entry {
+    File { name: String, size: u64, mtime: i64 },
+    Dir { name: String, mtime: i64, children: Vec<Entry> },
+}
+
+struct Walker<'a> {
+    seen_inodes: Mutex<HashSet<(u64, u64)>>,
     progress: &'a Progress,
 }
 
-/// Scans `root` recursively. Returns `None` if cancelled.
+impl Walker<'_> {
+    fn walk(&self, path: &Path) -> Vec<Entry> {
+        if self.progress.cancel.load(Ordering::Relaxed) {
+            return Vec::new();
+        }
+        // Only a progress hint; never wait for other threads.
+        if let Ok(mut cur) = self.progress.current.try_lock() {
+            *cur = path.to_string_lossy().into_owned();
+        }
+        let Ok(entries) = fs::read_dir(path) else { return Vec::new() };
+
+        let mut files = Vec::new();
+        let mut dirs = Vec::new();
+        let (mut count, mut bytes) = (0, 0);
+        for entry in entries.flatten() {
+            // DirEntry::metadata does not follow symlinks.
+            let Ok(md) = entry.metadata() else { continue };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if md.is_dir() {
+                let child_path = entry.path();
+                if !SKIP_DIRS.iter().any(|d| child_path == Path::new(d)) {
+                    dirs.push((name, md.mtime(), child_path));
+                }
+            } else {
+                // Count hard-linked files only once.
+                let size = if md.nlink() > 1
+                    && !self.seen_inodes.lock().unwrap().insert((md.dev(), md.ino()))
+                {
+                    0
+                } else {
+                    md.blocks() * 512
+                };
+                count += 1;
+                bytes += size;
+                files.push(Entry::File { name, size, mtime: md.mtime() });
+            }
+        }
+        self.progress.files.fetch_add(count, Ordering::Relaxed);
+        self.progress.bytes.fetch_add(bytes, Ordering::Relaxed);
+
+        let subdirs: Vec<Entry> = dirs
+            .into_par_iter()
+            .map(|(name, mtime, p)| Entry::Dir { name, mtime, children: self.walk(&p) })
+            .collect();
+        files.extend(subdirs);
+        files
+    }
+}
+
+struct Scanner {
+    nodes: Vec<Node>,
+    kind_map: HashMap<String, u32>,
+    kinds: Vec<KindStat>,
+}
+
+/// Scans `root` recursively, using all CPU cores. Returns `None` if cancelled.
 pub fn scan(root: &Path, progress: &Progress) -> Option<Tree> {
-    let mut s = Scanner {
-        nodes: Vec::new(),
-        kind_map: HashMap::new(),
-        kinds: Vec::new(),
-        seen_inodes: HashSet::new(),
-        progress,
-    };
+    let walker = Walker { seen_inodes: Mutex::new(HashSet::new()), progress };
+    let entries = walker.walk(root);
+    if progress.cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+
+    let mut s = Scanner { nodes: Vec::new(), kind_map: HashMap::new(), kinds: Vec::new() };
     let mtime = fs::symlink_metadata(root).map(|m| m.mtime()).unwrap_or(0);
     s.nodes.push(Node {
         name: root.to_string_lossy().into_owned(),
@@ -140,14 +201,11 @@ pub fn scan(root: &Path, progress: &Progress) -> Option<Tree> {
         files: 0,
         mtime,
     });
-    s.scan_dir(root, 0);
-    if progress.cancel.load(Ordering::Relaxed) {
-        return None;
-    }
+    s.add_children(0, entries);
     Some(s.finish())
 }
 
-impl Scanner<'_> {
+impl Scanner {
     fn kind_for(&mut self, name: &str) -> u32 {
         let key = match name.rsplit_once('.') {
             Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() && ext.len() <= 12 => {
@@ -164,62 +222,41 @@ impl Scanner<'_> {
         k
     }
 
-    fn scan_dir(&mut self, path: &Path, idx: usize) {
-        if self.progress.cancel.load(Ordering::Relaxed) {
-            return;
-        }
-        if let Ok(mut cur) = self.progress.current.lock() {
-            *cur = path.to_string_lossy().into_owned();
-        }
-        let Ok(entries) = fs::read_dir(path) else { return };
-
-        for entry in entries.flatten() {
-            // DirEntry::metadata does not follow symlinks.
-            let Ok(md) = entry.metadata() else { continue };
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let child_path = entry.path();
+    /// Flattens scanned entries into the arena below `idx`.
+    fn add_children(&mut self, idx: usize, entries: Vec<Entry>) {
+        for entry in entries {
             let child = self.nodes.len();
-
-            if md.is_dir() {
-                if SKIP_DIRS.iter().any(|d| child_path == Path::new(d)) {
-                    continue;
+            match entry {
+                Entry::File { name, size, mtime } => {
+                    let kind = self.kind_for(&name);
+                    let k = &mut self.kinds[kind as usize];
+                    k.size += size;
+                    k.count += 1;
+                    self.nodes.push(Node {
+                        name,
+                        parent: Some(idx),
+                        children: Vec::new(),
+                        size,
+                        is_dir: false,
+                        kind,
+                        files: 1,
+                        mtime,
+                    });
                 }
-                self.nodes.push(Node {
-                    name,
-                    parent: Some(idx),
-                    children: Vec::new(),
-                    size: 0,
-                    is_dir: true,
-                    kind: NO_KIND,
-                    files: 0,
-                    mtime: md.mtime(),
-                });
-                self.scan_dir(&child_path, child);
-            } else {
-                // Count hard-linked files only once.
-                let size = if md.nlink() > 1 && !self.seen_inodes.insert((md.dev(), md.ino())) {
-                    0
-                } else {
-                    md.blocks() * 512
-                };
-                let kind = self.kind_for(&name);
-                let k = &mut self.kinds[kind as usize];
-                k.size += size;
-                k.count += 1;
-                self.nodes.push(Node {
-                    name,
-                    parent: Some(idx),
-                    children: Vec::new(),
-                    size,
-                    is_dir: false,
-                    kind,
-                    files: 1,
-                    mtime: md.mtime(),
-                });
-                self.progress.files.fetch_add(1, Ordering::Relaxed);
-                self.progress.bytes.fetch_add(size, Ordering::Relaxed);
+                Entry::Dir { name, mtime, children } => {
+                    self.nodes.push(Node {
+                        name,
+                        parent: Some(idx),
+                        children: Vec::new(),
+                        size: 0,
+                        is_dir: true,
+                        kind: NO_KIND,
+                        files: 0,
+                        mtime,
+                    });
+                    self.add_children(child, children);
+                }
             }
-
             let (size, files) = (self.nodes[child].size, self.nodes[child].files);
             let parent = &mut self.nodes[idx];
             parent.children.push(child);
