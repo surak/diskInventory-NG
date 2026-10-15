@@ -7,11 +7,12 @@
 <p align="center">
   <b>See where your disk space has gone.</b><br>
   A fast, native disk usage visualizer for macOS, written in Rust —<br>
-  a modern take on the classic <a href="https://www.derlien.com">Disk Inventory X</a>.
+  a modern tribute to <a href="https://www.derlien.com">Disk Inventory X</a> by Tjark Derlien.
 </p>
 
 <p align="center">
   <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/badge/download-DMG-blue?logo=apple"></a>
+  <a href="https://surak.github.io/diskInventory-NG/"><img alt="Website" src="https://img.shields.io/badge/website-GitHub%20Pages-8A2BE2"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="macOS 11+" src="https://img.shields.io/badge/macOS-11%2B-lightgrey?logo=apple">
   <img alt="Rust" src="https://img.shields.io/badge/made%20with-Rust-orange?logo=rust">
@@ -110,17 +111,32 @@ cargo run --release -- --scan-only ~/Library
 
 Sizes are *allocated* sizes on disk (blocks × 512), like Finder's "on disk" figure.
 
-## 🙏 Credits
+## 🙏 Acknowledgements
 
-- [Disk Inventory X](https://www.derlien.com) by Tjark Derlien — the original
-  macOS app this project is inspired by.
-- [KDirStat](https://kdirstat.sourceforge.net/) and
-  [WinDirStat](https://windirstat.net/) for the cushion treemap approach.
-- *Cushion Treemaps* (van Wijk & van de Wetering, 1999) and
-  *Squarified Treemaps* (Bruls, Huizing & van Wijk, 2000).
+**Disk Inventory NG exists because of [Disk Inventory X](https://www.derlien.com)
+by [Tjark Derlien](https://www.derlien.com).** For years, Disk Inventory X was
+the tool Mac users reached for when their disk was mysteriously full. Its idea of
+three synchronized views — folder hierarchy, cushion treemap and file kinds — is
+the design this project follows, and the app icon is a homage to its isometric
+3D treemap.
 
-Disk Inventory NG is an independent implementation and contains no code from
-the original projects.
+**Thank you, Tjark,** for creating Disk Inventory X, for sharing it with the
+world for free and as open source (under the GPL), and for showing how useful a
+picture of your disk can be. This project is our attempt to carry that idea
+forward on modern macOS.
+
+Disk Inventory X itself stood on the shoulders of others, and so do we:
+
+- [KDirStat](https://kdirstat.sourceforge.net/) by Stefan Hundhammer, whose
+  treemap layout Disk Inventory X used, and
+  [WinDirStat](https://windirstat.net/), which inspired it.
+- *Cushion Treemaps* (Jarke J. van Wijk & Huub van de Wetering, 1999) and
+  *Squarified Treemaps* (Mark Bruls, Kees Huizing & Jarke J. van Wijk, 2000).
+- [Treemaps](https://www.cs.umd.edu/hcil/treemap-history/), invented by Ben Shneiderman.
+
+Disk Inventory NG is an independent reimplementation in Rust. It contains no code
+or artwork from Disk Inventory X and is not affiliated with or endorsed by its
+author. "Disk Inventory X" is the name of Tjark Derlien's original application.
 
 ## 📄 License
 
