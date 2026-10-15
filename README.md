@@ -44,6 +44,8 @@ downloads, caches and VM images jump right out.
 - **Zoom** into any folder (double-click or <kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>↓</kbd>) and back out (<kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>↑</kbd>).
 - **Act on it** — show in Finder / Explorer / your file manager (<kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>R</kbd>), Open, or Move to Trash (Recycle Bin on Windows);
   the view updates instantly without a rescan.
+- **Rescan just one folder** after cleaning up (right-click → *Rescan This Folder*),
+  in the background, instead of rescanning the whole disk.
 - **Volume list** on launch that follows disks as they are mounted and unmounted.
 - Counts hard links once and doesn't wander into other volumes.
 

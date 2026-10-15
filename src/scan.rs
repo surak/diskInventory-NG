@@ -103,6 +103,79 @@ impl Tree {
     }
 }
 
+impl Tree {
+    /// Replaces the contents of directory `idx` with a fresh scan of it
+    /// (`sub`, whose root is that directory), fixing up the sizes of all
+    /// ancestors and the kind statistics. The old nodes stay in the arena,
+    /// unreferenced.
+    pub fn replace_subtree(&mut self, idx: usize, sub: Tree) {
+        // Forget the old contents' kind statistics.
+        let mut stack = self.nodes[idx].children.clone();
+        while let Some(i) = stack.pop() {
+            let n = &self.nodes[i];
+            if n.kind != NO_KIND {
+                let k = &mut self.kinds[n.kind as usize];
+                k.size -= n.size;
+                k.count -= 1;
+            }
+            stack.extend_from_slice(&n.children);
+        }
+
+        // Map the new scan's kinds onto ours, adding unknown ones.
+        let mut by_name: HashMap<String, u32> =
+            self.kinds.iter().enumerate().map(|(i, k)| (k.name.clone(), i as u32)).collect();
+        let remap: Vec<u32> = sub
+            .kinds
+            .iter()
+            .map(|k| {
+                *by_name.entry(k.name.clone()).or_insert_with(|| {
+                    let color = crate::kinds::color_for_rank(self.kinds.len());
+                    self.kinds.push(KindStat { name: k.name.clone(), size: 0, count: 0, color });
+                    self.kinds.len() as u32 - 1
+                })
+            })
+            .collect();
+        for (k, stat) in sub.kinds.iter().enumerate() {
+            let ours = &mut self.kinds[remap[k] as usize];
+            ours.size += stat.size;
+            ours.count += stat.count;
+        }
+
+        // Append the new nodes; sub index j (j ≥ 1) becomes offset + j.
+        let (old_size, old_files) = (self.nodes[idx].size, self.nodes[idx].files);
+        let offset = self.nodes.len() - 1;
+        let mut nodes = sub.nodes.into_iter();
+        let root = nodes.next().expect("scan always has a root");
+        for mut n in nodes {
+            n.parent = n.parent.map(|p| if p == 0 { idx } else { p + offset });
+            for c in &mut n.children {
+                *c += offset;
+            }
+            if n.kind != NO_KIND {
+                n.kind = remap[n.kind as usize];
+            }
+            self.nodes.push(n);
+        }
+        let node = &mut self.nodes[idx];
+        node.children = root.children.iter().map(|&c| c + offset).collect();
+        node.size = root.size;
+        node.files = root.files;
+        node.mtime = root.mtime;
+
+        // Ancestors: adjust totals and keep children sorted by size.
+        let mut p = self.nodes[idx].parent;
+        while let Some(i) = p {
+            let n = &mut self.nodes[i];
+            n.size = n.size + root.size - old_size;
+            n.files = n.files + root.files - old_files;
+            let mut children = std::mem::take(&mut n.children);
+            children.sort_by(|&a, &b| self.nodes[b].size.cmp(&self.nodes[a].size));
+            self.nodes[i].children = children;
+            p = self.nodes[i].parent;
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Progress {
     pub files: AtomicU64,
@@ -287,5 +360,50 @@ impl Scanner {
         }
 
         Tree { nodes: self.nodes, kinds }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, bytes: usize) {
+        fs::write(path, vec![7u8; bytes]).unwrap();
+    }
+
+    fn find(tree: &Tree, name: &str) -> usize {
+        tree.nodes.iter().position(|n| n.name == name).unwrap()
+    }
+
+    #[test]
+    fn rescanning_a_subtree_matches_a_full_scan() {
+        let root = std::env::temp_dir().join(format!("dinv-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("a/deep")).unwrap();
+        fs::create_dir_all(root.join("b")).unwrap();
+        write(&root.join("a/one.txt"), 10_000);
+        write(&root.join("a/deep/two.bin"), 50_000);
+        write(&root.join("b/three.txt"), 20_000);
+
+        let mut tree = scan(&root, &Progress::default()).unwrap();
+
+        // Clean up and add something inside "a", then rescan only "a".
+        fs::remove_file(root.join("a/deep/two.bin")).unwrap();
+        write(&root.join("a/new.jpg"), 300_000);
+        let a = find(&tree, "a");
+        let sub = scan(&root.join("a"), &Progress::default()).unwrap();
+        tree.replace_subtree(a, sub);
+
+        let full = scan(&root, &Progress::default()).unwrap();
+        assert_eq!(tree.nodes[0].size, full.nodes[0].size);
+        assert_eq!(tree.nodes[0].files, full.nodes[0].files);
+        assert_eq!(tree.nodes[a].size, full.nodes[find(&full, "a")].size);
+        // The biggest child comes first again.
+        assert_eq!(tree.nodes[0].children[0], a);
+        for name in [".txt", ".jpg", ".bin"] {
+            let count = |t: &Tree| t.kinds.iter().find(|k| k.name == name).map_or(0, |k| k.count);
+            assert_eq!(count(&tree), count(&full), "{name}");
+        }
+        fs::remove_dir_all(&root).unwrap();
     }
 }

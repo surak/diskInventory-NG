@@ -49,6 +49,14 @@ struct ListCache {
     total: usize,
 }
 
+/// A background rescan of one folder.
+struct Rescan {
+    idx: usize,
+    path: PathBuf,
+    progress: Arc<Progress>,
+    rx: Receiver<Option<Tree>>,
+}
+
 pub struct App {
     screen: Screen,
     tree: Option<Tree>,
@@ -69,6 +77,7 @@ pub struct App {
     error: Option<String>,
     volumes: Vec<Volume>,
     volumes_refreshed: Instant,
+    rescan: Option<Rescan>,
 }
 
 impl App {
@@ -92,6 +101,7 @@ impl App {
             error: None,
             volumes: volumes::list(),
             volumes_refreshed: Instant::now(),
+            rescan: None,
         };
         if let Some(p) = initial {
             app.start_scan(p);
@@ -109,7 +119,59 @@ impl App {
         self.screen = Screen::Scanning { path, progress, rx, started: Instant::now() };
     }
 
+    /// Rescans only the folder `idx` (or the folder containing it) in the
+    /// background — handy after cleaning up, without rescanning everything.
+    fn rescan_folder(&mut self, idx: usize) {
+        let Some(tree) = &self.tree else { return };
+        if self.rescan.is_some() {
+            return;
+        }
+        let idx = if tree.nodes[idx].is_dir { idx } else { tree.nodes[idx].parent.unwrap_or(0) };
+        if idx == 0 {
+            // The scan root itself: that is a full rescan.
+            return self.start_scan(tree.path(0));
+        }
+        let path = tree.path(idx);
+        let progress = Arc::new(Progress::default());
+        let (tx, rx) = mpsc::channel();
+        let (p, prog) = (path.clone(), progress.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(scan::scan(&p, &prog));
+        });
+        self.rescan = Some(Rescan { idx, path, progress, rx });
+    }
+
+    fn poll_rescan(&mut self, ctx: &egui::Context) {
+        let Some(r) = &self.rescan else { return };
+        let result = match r.rx.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+                return;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => None,
+        };
+        let idx = r.idx;
+        self.rescan = None;
+        let (Some(sub), Some(tree)) = (result, &mut self.tree) else { return };
+
+        // Selection and zoom inside the folder point at nodes being replaced.
+        let inside = |i: usize| i != idx && tree.is_ancestor(idx, i);
+        let selection_inside = self.selected.is_some_and(inside);
+        let zoom_inside = inside(self.zoom);
+        tree.replace_subtree(idx, sub);
+        if selection_inside {
+            self.selected = Some(idx);
+        }
+        if zoom_inside {
+            self.zoom = idx;
+        }
+        self.generation += 1;
+    }
+
     fn set_tree(&mut self, tree: Tree) {
+        // A pending folder rescan refers to the old tree.
+        self.rescan = None;
         self.tree = Some(tree);
         self.generation += 1;
         self.zoom = 0;
@@ -191,6 +253,7 @@ impl App {
             MenuAction::Open => self.open(idx),
             MenuAction::ZoomIn => self.zoom_in(),
             MenuAction::Trash => self.confirm_trash = Some(idx),
+            MenuAction::Rescan => self.rescan_folder(idx),
         }
     }
 
@@ -288,6 +351,7 @@ impl App {
     }
 
     fn main_screen(&mut self, ctx: &egui::Context) {
+        self.poll_rescan(ctx);
         self.shortcuts(ctx);
         self.toolbar(ctx);
         self.status_bar(ctx);
@@ -375,6 +439,15 @@ impl App {
             ui.horizontal(|ui| {
                 let root = &tree.nodes[0];
                 ui.label(format!("{} — {} in {} files", tree.path(0).display(), fmt_size(root.size), root.files));
+                if let Some(r) = &self.rescan {
+                    ui.separator();
+                    ui.spinner();
+                    ui.label(format!(
+                        "Rescanning {} — {} files",
+                        r.path.display(),
+                        r.progress.files.load(Ordering::Relaxed)
+                    ));
+                }
                 if let Some(h) = self.hovered.or(self.selected) {
                     ui.separator();
                     ui.add(
@@ -388,6 +461,8 @@ impl App {
 
     fn hierarchy(&mut self, ui: &mut egui::Ui) {
         let Some(tree) = &self.tree else { return };
+        let rescan_busy = self.rescan.is_some();
+        let rescanning = self.rescan.as_ref().map(|r| r.idx);
 
         // Flatten the expanded part of the tree into rows.
         let mut rows: Vec<(usize, usize)> = Vec::new();
@@ -435,6 +510,9 @@ impl App {
                     ui.painter().rect_filled(r, 2.0, color);
                     let name = if idx == 0 { tree.path(0).display().to_string() } else { n.name.clone() };
                     let resp = ui.selectable_label(self.selected == Some(idx), name);
+                    if rescanning == Some(idx) {
+                        ui.spinner();
+                    }
                     if resp.clicked() {
                         clicked = Some(idx);
                     }
@@ -445,7 +523,7 @@ impl App {
                         clicked = Some(idx);
                     }
                     resp.context_menu(|ui| {
-                        if let Some(a) = menu_actions(ui) {
+                        if let Some(a) = menu_actions(ui, rescan_busy) {
                             action = Some((a, idx));
                         }
                     });
@@ -568,6 +646,7 @@ impl App {
 
     fn treemap_view(&mut self, ui: &mut egui::Ui) {
         let Some(tree) = &self.tree else { return };
+        let rescan_busy = self.rescan.is_some();
         let rect = ui.available_rect_before_wrap();
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp).max(1.0) as usize, (rect.height() * ppp).max(1.0) as usize];
@@ -652,7 +731,7 @@ impl App {
             self.zoom_in();
         }
         let mut action = None;
-        resp.context_menu(|ui| action = menu_actions(ui));
+        resp.context_menu(|ui| action = menu_actions(ui, rescan_busy));
         if let (Some(a), Some(sel)) = (action, self.selected) {
             self.apply(a, sel);
         }
@@ -772,18 +851,20 @@ enum MenuAction {
     Open,
     ZoomIn,
     Trash,
+    Rescan,
 }
 
 /// Context menu shared by the hierarchy and the treemap.
-fn menu_actions(ui: &mut egui::Ui) -> Option<MenuAction> {
+fn menu_actions(ui: &mut egui::Ui, rescan_busy: bool) -> Option<MenuAction> {
     let mut action = None;
-    for (label, a) in [
-        (REVEAL_LABEL, MenuAction::Reveal),
-        ("Open", MenuAction::Open),
-        ("Zoom In", MenuAction::ZoomIn),
-        ("Move to Trash…", MenuAction::Trash),
+    for (label, a, enabled) in [
+        (REVEAL_LABEL, MenuAction::Reveal, true),
+        ("Open", MenuAction::Open, true),
+        ("Zoom In", MenuAction::ZoomIn, true),
+        ("Rescan This Folder", MenuAction::Rescan, !rescan_busy),
+        ("Move to Trash…", MenuAction::Trash, true),
     ] {
-        if ui.button(label).clicked() {
+        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
             action = Some(a);
             ui.close_menu();
         }
