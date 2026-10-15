@@ -104,7 +104,7 @@ impl Renderer<'_> {
         for y in y0..y1 {
             let ny = -(2.0 * s[1] * (y as f32 + 0.5) + s[3]);
             let row = &mut self.img.rgba[(y * w + x0) * 4..(y * w + x1) * 4];
-            for (i, px) in row.chunks_exact_mut(4).enumerate() {
+            for (i, px) in row.as_chunks_mut::<4>().0.iter_mut().enumerate() {
                 let x = (x0 + i) as f32 + 0.5;
                 let nx = -(2.0 * s[0] * x + s[2]);
                 let cosa = (nx * lx + ny * ly + lz) / (nx * nx + ny * ny + 1.0).sqrt();

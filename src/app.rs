@@ -620,8 +620,8 @@ impl App {
         if let Some(mut s) = self.selected {
             loop {
                 if let Some(&r) = cache.layout.rects.get(&s) {
-                    painter.rect_stroke(to_screen(r).shrink(1.0), 0.0, Stroke::new(2.0, Color32::WHITE));
-                    painter.rect_stroke(to_screen(r), 0.0, Stroke::new(1.0, Color32::BLACK));
+                    painter.rect_stroke(to_screen(r).shrink(1.0), 0.0, Stroke::new(2.0_f32, Color32::WHITE));
+                    painter.rect_stroke(to_screen(r), 0.0, Stroke::new(1.0_f32, Color32::BLACK));
                     break;
                 }
                 match tree.nodes[s].parent {
