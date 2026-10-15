@@ -3,6 +3,8 @@ name = "disk-inventory-ng"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/surak/diskInventory-NG"
+authors = ["Alexandre Strube"]
 description = "Disk usage visualizer with cushion treemaps, inspired by Disk Inventory X"
 
 [dependencies]

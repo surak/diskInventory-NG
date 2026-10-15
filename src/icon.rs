@@ -76,11 +76,10 @@ fn fill_convex(img: &mut [[f32; 4]], size: usize, poly: &[P], mut shade: impl Fn
                 }
                 c.signum() == sign
             });
-            if inside {
-                if let Some(c) = shade(x, y) {
+            if inside
+                && let Some(c) = shade(x, y) {
                     img[py * size + px] = [c[0], c[1], c[2], 1.0];
                 }
-            }
         }
     }
 }
@@ -96,8 +95,8 @@ pub fn render(size: usize) -> Vec<u8> {
     let (tex, layout) = treemap::render(&tree, 0, TEX, TEX);
 
     // Isometric projection of the unit square, with room for the extrusion.
-    let s = big as f32 * 0.47;
-    let (cx, cy) = (big as f32 * 0.5, big as f32 * 0.335);
+    let s = big as f32 * 0.36;
+    let (cx, cy) = (big as f32 * 0.5, big as f32 * 0.38);
     let (cos, sin) = (30f32.to_radians().cos(), 30f32.to_radians().sin());
     let project = |x: f32, y: f32, z: f32| -> P { (cx + (x - y) * cos * s, cy + (x + y) * sin * s - z * s) };
 
@@ -110,6 +109,7 @@ pub fn render(size: usize) -> Vec<u8> {
     blocks.sort_by(|a, b| (a.0[2] + a.0[3]).total_cmp(&(b.0[2] + b.0[3])));
 
     let mut img = vec![[0f32; 4]; big * big];
+    squircle(&mut img, big);
     for (n, &(r, idx)) in blocks.iter().enumerate() {
         let [x0, y0, x1, y1] = r;
         let z = 0.10 + 0.05 * ((n * 7919 + idx * 31) % 5) as f32;
@@ -159,6 +159,36 @@ pub fn render(size: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+/// macOS-style app tile: an 824/1024 rounded square with a dark gradient.
+fn squircle(img: &mut [[f32; 4]], size: usize) {
+    let n = size as f32;
+    let (inset, radius) = (n * 100.0 / 1024.0, n * 185.0 / 1024.0);
+    let (lo, hi) = (inset, n - inset);
+    let top = [0.20, 0.27, 0.40];
+    let bottom = [0.07, 0.09, 0.15];
+    for y in 0..size {
+        for x in 0..size {
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            // Distance outside the rounded rectangle's inner (straight) part.
+            let dx = (lo + radius - px).max(px - (hi - radius)).max(0.0);
+            let dy = (lo + radius - py).max(py - (hi - radius)).max(0.0);
+            if px < lo || px > hi || py < lo || py > hi || dx * dx + dy * dy > radius * radius {
+                continue;
+            }
+            let t = (py - lo) / (hi - lo);
+            let mut c = [0.0; 3];
+            for i in 0..3 {
+                c[i] = top[i] + (bottom[i] - top[i]) * t;
+            }
+            // A thin highlight along the upper rim.
+            if py - lo < n * 0.004 {
+                c = c.map(|v| v + 0.12);
+            }
+            img[y * size + x] = [c[0], c[1], c[2], 1.0];
+        }
+    }
 }
 
 pub fn write_png(path: &std::path::Path, size: usize) -> std::io::Result<()> {

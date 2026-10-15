@@ -17,7 +17,7 @@ fn capacity(path: &Path) -> Option<(u64, u64)> {
     if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
         return None;
     }
-    let frsize = st.f_frsize as u64;
+    let frsize = st.f_frsize;
     Some((st.f_blocks as u64 * frsize, st.f_bavail as u64 * frsize))
 }
 

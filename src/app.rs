@@ -151,11 +151,10 @@ impl App {
     }
 
     fn zoom_out(&mut self) {
-        if let Some(tree) = &self.tree {
-            if let Some(p) = tree.nodes[self.zoom].parent {
+        if let Some(tree) = &self.tree
+            && let Some(p) = tree.nodes[self.zoom].parent {
                 self.zoom = p;
             }
-        }
     }
 
     fn reveal(&self, idx: usize) {
@@ -326,18 +325,15 @@ impl App {
         if zout {
             self.zoom_out();
         }
-        if up {
-            if let (Some(t), Some(s)) = (&self.tree, self.selected) {
-                if let Some(p) = t.nodes[s].parent {
+        if up
+            && let (Some(t), Some(s)) = (&self.tree, self.selected)
+                && let Some(p) = t.nodes[s].parent {
                     self.select(p);
                 }
-            }
-        }
-        if reveal {
-            if let Some(s) = self.selected {
+        if reveal
+            && let Some(s) = self.selected {
                 self.reveal(s);
             }
-        }
     }
 
     fn toolbar(&mut self, ctx: &egui::Context) {
@@ -347,11 +343,10 @@ impl App {
                 if ui.button("⏏ Volumes").clicked() {
                     self.screen = Screen::Start;
                 }
-                if ui.button("⟳ Rescan").clicked() {
-                    if let Some(t) = &self.tree {
+                if ui.button("⟳ Rescan").clicked()
+                    && let Some(t) = &self.tree {
                         self.start_scan(t.path(0));
                     }
-                }
                 ui.separator();
                 if ui.add_enabled(has_sel, egui::Button::new("🔍 Zoom In")).on_hover_text("⌘↓").clicked() {
                     self.zoom_in();
@@ -407,13 +402,12 @@ impl App {
 
         let row_h = ui.spacing().interact_size.y;
         let mut area = ScrollArea::both().auto_shrink(false);
-        if std::mem::take(&mut self.scroll_to_selection) {
-            if let Some(pos) = rows.iter().position(|&(i, _)| Some(i) == self.selected) {
+        if std::mem::take(&mut self.scroll_to_selection)
+            && let Some(pos) = rows.iter().position(|&(i, _)| Some(i) == self.selected) {
                 let step = row_h + ui.spacing().item_spacing.y;
                 let target = pos as f32 * step - ui.available_height() / 2.0;
                 area = area.vertical_scroll_offset(target.max(0.0));
             }
-        }
 
         let mut clicked = None;
         let mut toggled = None;
@@ -466,11 +460,10 @@ impl App {
             self.apply(a, idx);
         }
 
-        if let Some(t) = toggled {
-            if !self.expanded.remove(&t) {
+        if let Some(t) = toggled
+            && !self.expanded.remove(&t) {
                 self.expanded.insert(t);
             }
-        }
         if let Some(c) = clicked {
             self.selected = Some(c);
             if self.tree.as_ref().is_some_and(|t| !t.is_ancestor(self.zoom, c)) {
@@ -581,7 +574,7 @@ impl App {
         let stale = self
             .treemap
             .as_ref()
-            .map_or(true, |c| c.size != size || c.root != self.zoom || c.generation != self.generation);
+            .is_none_or(|c| c.size != size || c.root != self.zoom || c.generation != self.generation);
         if stale {
             let (img, layout) = treemap::render(tree, self.zoom, size[0], size[1]);
             let image = ColorImage::from_rgba_unmultiplied(size, &img.rgba);
@@ -650,11 +643,10 @@ impl App {
         }
 
         let hovered = self.hovered;
-        if resp.clicked() || resp.secondary_clicked() {
-            if let Some(h) = hovered {
+        if (resp.clicked() || resp.secondary_clicked())
+            && let Some(h) = hovered {
                 self.select(h);
             }
-        }
         if resp.double_clicked() && hovered.is_some() {
             self.zoom_in();
         }
@@ -686,7 +678,7 @@ impl App {
                 });
 
                 let key = (self.kind_filter, self.search.to_lowercase(), self.generation);
-                if self.list.as_ref().map_or(true, |l| l.key != key) {
+                if self.list.as_ref().is_none_or(|l| l.key != key) {
                     let mut all: Vec<usize> = Vec::new();
                     let mut stack = vec![0usize];
                     while let Some(i) = stack.pop() {
